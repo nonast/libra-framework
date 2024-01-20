@@ -244,5 +244,6 @@ async fn persist_genesis() {
         .next()
         .unwrap()
         .unwrap();
-    assert!(l.file_name().to_str().unwrap().contains("genesis.blob"));
+    let l_blob = l.path().join("genesis.blob");
+    assert!(l_blob.exists());
 }
