@@ -1,5 +1,6 @@
 mod support;
 
+use std::path::PathBuf;
 use crate::support::{deadline_secs, update_node_config_restart};
 
 use diem_config::config::InitialSafetyRulesConfig;
@@ -8,6 +9,7 @@ use diem_types::transaction::Transaction;
 use libra_smoke_tests::libra_smoke::LibraSmoke;
 use rescue::{diem_db_bootstrapper::BootstrapOpts, rescue_tx::RescueTxOpts};
 use smoke_test::test_utils::swarm_utils::insert_waypoint;
+use rescue::twin::TwinOpts;
 
 #[tokio::test]
 
@@ -116,6 +118,33 @@ async fn test_twin() -> anyhow::Result<()> {
         env.liveness_check(deadline_secs(1)).await.is_err(),
         "test suite thinks dead node is live"
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_twin_with_rando() -> anyhow::Result<()> {
+    println!("Hi, I'm rando");
+    println!("0. create a valid test database from smoke-tests");
+    let mut s = LibraSmoke::new(Some(5))
+        .await
+        .expect("could not start libra smoke");
+
+    let env = &mut s.swarm;
+
+    let brick_db = env.validators().next().unwrap().config().storage.dir();
+    assert!(brick_db.exists());
+
+    println!("BRICK DB PATH: {:?}", brick_db);
+
+    for node in env.validators_mut() {
+        node.stop();
+    }
+
+    // // for if you want to use your own production db
+    // let brick_db = PathBuf::from("root/.libra/data/db");
+
+    TwinOpts::apply_with_rando_e2e(brick_db).await?;
 
     Ok(())
 }
