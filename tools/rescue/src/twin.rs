@@ -302,9 +302,17 @@ impl TwinOpts {
         println!("brick_db: {:?}", brick_db);
         println!("copying the brick db to the swarm db");
         // // this swaps the directories
-        // fs::rename(brick_db, &swarm_db_path)?;
+        assert!(brick_db.exists());
+        assert!(swarm_db_path.exists());
+        let swarm_old_path = swarm_db_path.join("old");
+        fs::rename(&swarm_db_path, &swarm_old_path)?;
+        assert!(!swarm_db_path.exists());
+
+        fs::rename(brick_db, &swarm_db_path)?;
         // copy all the contents of the brick db to the swarm db
-        TwinOpts::copy_contents(&brick_db, &swarm_db_path)?;
+
+
+        // TwinOpts::copy_contents(&brick_db, &swarm_db_path)?;
         println!("done copying the brick db to the swarm db");
 
         // 3. Create validator registration payload

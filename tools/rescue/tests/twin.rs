@@ -150,7 +150,7 @@ async fn test_twin_with_rando() -> anyhow::Result<()> {
     }
 
     // // for if you want to use your own production db
-    // let brick_db = PathBuf::from("root/.libra/data/db");
+    let brick_db = PathBuf::from("/root/db");
 
     TwinOpts::apply_with_rando_e2e(brick_db).await?;
 
