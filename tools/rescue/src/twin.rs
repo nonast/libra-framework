@@ -1,14 +1,17 @@
 #![allow(unused)]
+use std::time::Instant;
 use std::{path::PathBuf, time::Duration};
 use std::process::abort;
 
 use anyhow::bail;
 use clap::Parser;
 use diem_config::config::NodeConfig;
-// use diem_forge::LocalNode;
+use diem_forge::Swarm;
+use diem_forge::SwarmExt;
 use diem_temppath::TempPath;
 use diem_types::transaction::{Script, TransactionPayload};
 use diem_types::validator_config::ValidatorOperatorConfigResource;
+use fs_extra::dir;
 use futures_util::TryFutureExt;
 use move_core_types::account_address::AccountAddress;
 
@@ -223,6 +226,8 @@ impl TwinOpts {
         // 1. create a new validator with a new account
         // let mut operator_file = TwinOpts::initialize_marlon_the_val().await?;
         let mut smoke = TwinOpts::initialize_marlon_the_val_and_prevent_drop().await?;
+
+
         // let operator_file = smoke.swarm.validators_mut().next().unwrap().config_path().parent().unwrap().join("data").join("operator.yaml");
 
         // get the necessary values from the current db
@@ -291,6 +296,12 @@ impl TwinOpts {
         let query_res_1 = smoke.swarm.validators_mut().next().unwrap().rest_client().get_account_resource(AccountAddress::ONE, "0x1::validator_universe::ValidatorUniverse").await?;
 
 
+        smoke.swarm.validators_mut().for_each(|n| {
+          dbg!(&n.log_path());
+          n.stop();
+        });
+
+
         // 2. replace the swarm db with the brick db
         let swarm_db_path = smoke.swarm.validators_mut().next().unwrap().config().storage.dir();
         println!("Amount of validators: {:?}", smoke.swarm.validators_mut().count());
@@ -305,16 +316,48 @@ impl TwinOpts {
         assert!(brick_db.exists());
         assert!(swarm_db_path.exists());
         let swarm_old_path = swarm_db_path.join("old");
-        fs::rename(&swarm_db_path, &swarm_old_path)?;
-        assert!(!swarm_db_path.exists());
+        fs::create_dir(&swarm_old_path);
+        println!("try rename 1");
+        let options = dir::CopyOptions::new(); //Initialize default values for CopyOptions
 
-        fs::rename(brick_db, &swarm_db_path)?;
+        // move source/dir1 to target/dir1
+        dir::move_dir(&swarm_db_path, &swarm_old_path, &options)?;
+        // fs::rename(&swarm_db_path, &swarm_old_path)?;
+
+        // fs_extra::dir::move_dir_with_progress(&swarm_db_path, &swarm_old_path)?;
+        assert!(!swarm_db_path.exists());
+        println!("try rename 2");
+        fs::create_dir(&swarm_db_path);
+        dir::copy(&brick_db, &swarm_db_path, &options)?;
+
+        // fs::rename(brick_db, &swarm_db_path)?;
         // copy all the contents of the brick db to the swarm db
 
 
         // TwinOpts::copy_contents(&brick_db, &swarm_db_path)?;
         println!("done copying the brick db to the swarm db");
 
+        // smoke.swarm.launch();
+
+
+        // smoke.swarm.health_check();
+
+
+      //  let v = smoke.swarm.validators().next().unwrap();
+      //  dbg!(&v.rest_api_endpoint());
+      //  dbg!(&v.log_path());
+        smoke.swarm.validators_mut().for_each(|n| {
+          dbg!(&n.log_path());
+          n.start();
+        });
+
+      //  println!(&v.);
+        println!("wait for liveness");
+        // smoke.swarm.wait_for_startup().await?;
+
+        smoke.swarm.liveness_check(Instant::now().checked_add(Duration::from_secs(30)).unwrap());
+
+        std::thread::sleep(Duration::from_secs(30));
         // 3. Create validator registration payload
 
         // let script = TwinOpts::register_marlon_tx(&operator_file)?;
@@ -328,29 +371,29 @@ impl TwinOpts {
 
         // test with existing slow wallet:
         // let account = AccountAddress::from_hex_literal("0x116c446a2d5bb191fa0ddb712d315059238bad6c6295ba88a199c2437f70e11b").unwrap();
+        // dbg!("run session");
+        // match libra_run_session(swarm_db_path.as_path(), |session| TwinOpts::combined_steps(session, account, consensus_public_key_file, proof_of_possession, network_addresses, fullnode_addresses), None) {
+        //     Ok(_) => println!("Successfully got through this voodoo box"),
+        //     Err(e) => {
+        //         println!("err: {:?}", e);
+        //         // we need to clean up the temp directory and running node.
+        //         // Comment out if you want to keep the directory for debugging.
+        //         unsafe {
+        //             ManuallyDrop::drop(&mut smoke);
+        //         }
+        //     },
+        // }
 
-        match libra_run_session(swarm_db_path.as_path(), |session| TwinOpts::combined_steps(session, account, consensus_public_key_file, proof_of_possession, network_addresses, fullnode_addresses), None) {
-            Ok(_) => println!("Successfully got through this voodoo box"),
-            Err(e) => {
-                println!("err: {:?}", e);
-                // we need to clean up the temp directory and running node.
-                // Comment out if you want to keep the directory for debugging.
-                unsafe {
-                    ManuallyDrop::drop(&mut smoke);
-                }
-            },
-        }
 
+        // // restart the validator
+        // smoke.swarm.validators_mut().next().unwrap().start();
+        // // print the contents of the directory
+        // // TwinOpts::print_directory(&swarm_db_path);
+        // smoke.swarm.wait_all_alive(Duration::from_secs(10)).await?;
 
-        // restart the validator
-        smoke.swarm.validators_mut().next().unwrap().start();
-        // print the contents of the directory
-        // TwinOpts::print_directory(&swarm_db_path);
-        smoke.swarm.wait_all_alive(Duration::from_secs(10)).await?;
-
-        // compare query before and after db swap
-        let query_res_2 = smoke.swarm.validators_mut().next().unwrap().rest_client().get_account_resource(AccountAddress::ONE, "0x1::validator_universe::ValidatorUniverse").await?;
-        println!("query_res 1: {:?} \n query_res_2: {:?}", query_res_1, query_res_2);
+        // // compare query before and after db swap
+        // let query_res_2 = smoke.swarm.validators_mut().next().unwrap().rest_client().get_account_resource(AccountAddress::ONE, "0x1::validator_universe::ValidatorUniverse").await?;
+        // println!("query_res 1: {:?} \n query_res_2: {:?}", query_res_1, query_res_2);
 
 
         // then we can register the validator

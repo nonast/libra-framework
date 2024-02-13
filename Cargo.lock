@@ -8283,6 +8283,7 @@ dependencies = [
  "diem-types",
  "diem-vm",
  "diem-vm-types",
+ "fs_extra",
  "futures-util",
  "hex",
  "libra-config",

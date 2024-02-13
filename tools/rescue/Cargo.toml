@@ -27,6 +27,7 @@ diem-types = { workspace = true }
 diem-vm = { workspace = true }
 diem-vm-types = { workspace = true }
 
+fs_extra = { workspace = true }
 futures-util = { workspace = true }
 libra-smoke-tests = { workspace = true }
 libra-framework = { workspace = true }
