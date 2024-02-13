@@ -154,5 +154,14 @@ async fn test_twin_with_rando() -> anyhow::Result<()> {
 
     TwinOpts::apply_with_rando_e2e(brick_db).await?;
 
+            // // get the validator universe from swarm db so that we can check afterwards if there's a change.
+        // let query_res_1 = marlon_node
+        //     .rest_client()
+        //     .get_account_resource(
+        //         AccountAddress::ONE,
+        //         "0x1::validator_universe::ValidatorUniverse",
+        //     )
+        //     .await?;
+
     Ok(())
 }
