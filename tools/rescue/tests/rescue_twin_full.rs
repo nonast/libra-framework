@@ -1,7 +1,6 @@
 mod support;
-use std::path::PathBuf;
 use rescue::twin::TwinOpts;
-
+use std::path::PathBuf;
 
 #[tokio::test]
 async fn test_twin_with_rando() -> anyhow::Result<()> {

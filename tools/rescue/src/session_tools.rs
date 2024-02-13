@@ -156,41 +156,40 @@ pub fn libra_execute_session_function(
 }
 
 /// Function for combined function calls
-pub fn session_add_validator(session: &mut SessionExt, cred: &ValCredentials) -> anyhow::Result<()> {
-        // account address of the diem_framework
-        // let signer = MoveValue::Signer(AccountAddress::ONE);
-        // let vector_val = MoveValue::vector_address(vec![cred.account]);
+pub fn session_add_validator(
+    session: &mut SessionExt,
+    cred: &ValCredentials,
+) -> anyhow::Result<()> {
+    // account address of the diem_framework
+    // let signer = MoveValue::Signer(AccountAddress::ONE);
+    // let vector_val = MoveValue::vector_address(vec![cred.account]);
 
-        // let args = vec![&signer, &vector_val];
+    // let args = vec![&signer, &vector_val];
 
-        // libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
+    // libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
 
-        let signer = MoveValue::Signer(cred.account);
-        // let signer_address = MoveValue::Address(cred.account);
-        let consensus_pubkey = MoveValue::vector_u8(cred.consensus_pubkey.clone());
-        let proof_of_possession = MoveValue::vector_u8(cred.proof_of_possession.clone());
-        let network_addresses = MoveValue::vector_u8(cred.network_addresses.clone());
-        let fullnode_addresses = MoveValue::vector_u8(cred.fullnode_addresses.clone());
+    let signer = MoveValue::Signer(cred.account);
+    // let signer_address = MoveValue::Address(cred.account);
+    let consensus_pubkey = MoveValue::vector_u8(cred.consensus_pubkey.clone());
+    let proof_of_possession = MoveValue::vector_u8(cred.proof_of_possession.clone());
+    let network_addresses = MoveValue::vector_u8(cred.network_addresses.clone());
+    let fullnode_addresses = MoveValue::vector_u8(cred.fullnode_addresses.clone());
 
-        let args = vec![
-            &signer,
-            &consensus_pubkey,
-            &proof_of_possession,
-            &network_addresses,
-            &fullnode_addresses,
-        ];
+    let args = vec![
+        &signer,
+        &consensus_pubkey,
+        &proof_of_possession,
+        &network_addresses,
+        &fullnode_addresses,
+    ];
 
-        libra_execute_session_function(
-            session,
-            "0x1::validator_universe::register_validator",
-            args,
-        )?;
+    libra_execute_session_function(session, "0x1::validator_universe::register_validator", args)?;
 
-        // // to end this, we (might) need to do voodoo
-        // writeset_voodoo_events(session)?;
+    // // to end this, we (might) need to do voodoo
+    // writeset_voodoo_events(session)?;
 
-        Ok(())
-    }
+    Ok(())
+}
 
 // // TODO: helper to print out the account state of a DB at rest.
 // // this could have a CLI entrypoint

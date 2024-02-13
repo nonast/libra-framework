@@ -90,7 +90,7 @@ impl TwinOpts {
         db_path: &Path,
         cred: &ValCredentials,
     ) -> anyhow::Result<PathBuf> {
-        println!("run session to onboard validator");
+        println!("run session to create validator onboarding tx (rescue.blob)");
         let vmc = libra_run_session(
             db_path,
             |session| session_add_validator(session, cred),
@@ -106,7 +106,10 @@ impl TwinOpts {
         Ok(out)
     }
 
-    pub async fn bootstrap_twin_db(swarm_db_path: &Path, genesis_blob_path: &Path) -> anyhow::Result<()>{
+    pub async fn bootstrap_twin_db(
+        swarm_db_path: &Path,
+        genesis_blob_path: &Path,
+    ) -> anyhow::Result<()> {
         println!("bootstrapping db with rescue.blob");
 
         let genesis_transaction = {
@@ -135,7 +138,6 @@ impl TwinOpts {
         bootstrap.run()?;
 
         Ok(())
-
     }
     /// end to end with rando
     /// Which is basically running a new random swarm on an existing db.
