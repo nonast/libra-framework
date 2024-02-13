@@ -167,10 +167,10 @@ pub fn session_add_validator(session: &mut SessionExt, cred: &ValCredentials) ->
 
         let signer = MoveValue::Signer(cred.account);
         // let signer_address = MoveValue::Address(cred.account);
-        let consensus_pubkey = MoveValue::vector_u8(cred.consensus_pubkey);
-        let proof_of_possession = MoveValue::vector_u8(cred.proof_of_possession);
-        let network_addresses = MoveValue::vector_u8(cred.network_addresses);
-        let fullnode_addresses = MoveValue::vector_u8(cred.fullnode_addresses);
+        let consensus_pubkey = MoveValue::vector_u8(cred.consensus_pubkey.clone());
+        let proof_of_possession = MoveValue::vector_u8(cred.proof_of_possession.clone());
+        let network_addresses = MoveValue::vector_u8(cred.network_addresses.clone());
+        let fullnode_addresses = MoveValue::vector_u8(cred.fullnode_addresses.clone());
 
         let args = vec![
             &signer,
