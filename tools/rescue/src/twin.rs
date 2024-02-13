@@ -90,6 +90,7 @@ impl TwinOpts {
         db_path: &Path,
         cred: &ValCredentials,
     ) -> anyhow::Result<PathBuf> {
+        println!("run session to onboard validator");
         let vmc = libra_run_session(
             db_path,
             |session| session_add_validator(session, cred),
@@ -106,6 +107,7 @@ impl TwinOpts {
     }
 
     pub async fn bootstrap_twin_db(swarm_db_path: &Path, genesis_blob_path: &Path) -> anyhow::Result<()>{
+        println!("bootstrapping db with rescue.blob");
 
         let genesis_transaction = {
             let buf = fs::read(&genesis_blob_path).unwrap();
@@ -169,6 +171,7 @@ impl TwinOpts {
         Self::bootstrap_twin_db(&swarm_db_path, &genesis_blob_path);
 
         // Ok now try to restart the swarm
+        println!("restarting validator");
         smoke.swarm.validators_mut().for_each(|n| {
             dbg!(&n.log_path());
             n.start();
@@ -193,6 +196,7 @@ impl TwinOpts {
 
     /// from an initialized swarm state, extract one node's credentials
     async fn extract_credentials(marlon_node: &LocalNode) -> anyhow::Result<ValCredentials> {
+        println!("extracting swarm validator credentials");
         // get the necessary values from the current db
         let account = marlon_node.config().get_peer_id().unwrap();
 
@@ -245,26 +249,25 @@ impl TwinOpts {
     }
 
     fn clone_db(prod_db: &Path, swarm_db: &Path) -> anyhow::Result<()> {
+        println!("copying the db db to the swarm db");
         println!("prod db path: {:?}", prod_db);
         println!("swarm db path: {:?}", swarm_db);
 
-        println!("copying the brick db to the swarm db");
         // // this swaps the directories
         assert!(prod_db.exists());
         assert!(swarm_db.exists());
         let swarm_old_path = swarm_db.parent().unwrap().join("db-old");
         fs::create_dir(&swarm_old_path);
-        println!("try rename 1");
         let options = dir::CopyOptions::new(); //Initialize default values for CopyOptions
 
         // move source/dir1 to target/dir1
         dir::move_dir(&swarm_db, &swarm_old_path, &options)?;
         assert!(!swarm_db.exists());
-        println!("try rename 2");
+
         fs::create_dir(&swarm_db);
         dir::copy(&prod_db, &swarm_db.parent().unwrap(), &options)?;
 
-        println!("done copying the prod db to the swarm db");
+        println!("db copied");
         Ok(())
     }
 
