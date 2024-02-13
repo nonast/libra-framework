@@ -21,6 +21,16 @@ use move_core_types::{
 
 use move_vm_types::gas::UnmeteredGasMeter;
 
+// TODO: this is duplicated with Identity
+#[derive(Debug, Clone)]
+pub struct ValCredentials {
+    pub account: AccountAddress,
+    pub consensus_pubkey: Vec<u8>,
+    pub proof_of_possession: Vec<u8>,
+    pub network_addresses: Vec<u8>,
+    pub fullnode_addresses: Vec<u8>,
+}
+
 // Run a VM session with a dirty database
 // NOTE: there are several implementations of this elsewhere in Diem
 // Some are buggy, some don't have exports or APIs needed (DiemDbBootstrapper). Some have issues with async and db locks (DiemDbDebugger).
@@ -144,6 +154,43 @@ pub fn libra_execute_session_function(
     )?;
     Ok(())
 }
+
+/// Function for combined function calls
+pub fn session_add_validator(session: &mut SessionExt, cred: &ValCredentials) -> anyhow::Result<()> {
+        // account address of the diem_framework
+        // let signer = MoveValue::Signer(AccountAddress::ONE);
+        // let vector_val = MoveValue::vector_address(vec![cred.account]);
+
+        // let args = vec![&signer, &vector_val];
+
+        // libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
+
+        let signer = MoveValue::Signer(cred.account);
+        // let signer_address = MoveValue::Address(cred.account);
+        let consensus_pubkey = MoveValue::vector_u8(cred.consensus_pubkey);
+        let proof_of_possession = MoveValue::vector_u8(cred.proof_of_possession);
+        let network_addresses = MoveValue::vector_u8(cred.network_addresses);
+        let fullnode_addresses = MoveValue::vector_u8(cred.fullnode_addresses);
+
+        let args = vec![
+            &signer,
+            &consensus_pubkey,
+            &proof_of_possession,
+            &network_addresses,
+            &fullnode_addresses,
+        ];
+
+        libra_execute_session_function(
+            session,
+            "0x1::validator_universe::register_validator",
+            args,
+        )?;
+
+        // // to end this, we (might) need to do voodoo
+        // writeset_voodoo_events(session)?;
+
+        Ok(())
+    }
 
 // // TODO: helper to print out the account state of a DB at rest.
 // // this could have a CLI entrypoint

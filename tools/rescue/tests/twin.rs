@@ -133,26 +133,11 @@ use rescue::twin::TwinOpts;
 #[tokio::test]
 async fn test_twin_with_rando() -> anyhow::Result<()> {
     println!("Hi, I'm rando");
-    println!("0. create a valid test database from smoke-tests");
-    let mut s = LibraSmoke::new(Some(5))
-        .await
-        .expect("could not start libra smoke");
-
-    let env = &mut s.swarm;
-
-    let brick_db = env.validators().next().unwrap().config().storage.dir();
-    assert!(brick_db.exists());
-
-    println!("BRICK DB PATH: {:?}", brick_db);
-
-    for node in env.validators_mut() {
-        node.stop();
-    }
 
     // // for if you want to use your own production db
-    let brick_db = PathBuf::from("/root/db");
+    let prod_db_to_clone = PathBuf::from("/root/db");
 
-    TwinOpts::apply_with_rando_e2e(brick_db).await?;
+    TwinOpts::apply_with_rando_e2e(prod_db_to_clone).await?;
 
             // // get the validator universe from swarm db so that we can check afterwards if there's a change.
         // let query_res_1 = marlon_node

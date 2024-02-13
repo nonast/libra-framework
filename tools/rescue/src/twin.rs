@@ -9,23 +9,20 @@ use diem_config::config::NodeConfig;
 use diem_forge::Swarm;
 use diem_forge::SwarmExt;
 use diem_temppath::TempPath;
-use diem_types::transaction::{Script, TransactionPayload};
+use diem_types::transaction::{Script, Transaction, TransactionPayload, WriteSetPayload};
 use diem_types::validator_config::ValidatorOperatorConfigResource;
 use fs_extra::dir;
 use futures_util::TryFutureExt;
 use move_core_types::account_address::AccountAddress;
 
-use crate::rescue_tx::RescueTxOpts;
+use crate::diem_db_bootstrapper::BootstrapOpts;
+use crate::{rescue_tx::RescueTxOpts, session_tools::ValCredentials};
+
 use diem_config::keys::ConfigKey;
-use diem_crypto::ed25519::PrivateKey;
-use diem_forge::{LocalNode, LocalVersion, Node, NodeExt, Version};
-use libra_smoke_tests::libra_smoke::LibraSmoke;
-use libra_txs::txs_cli_vals::ValidatorTxs;
-use std::fs;
-use std::mem::ManuallyDrop;
-use std::path::Path;
 use diem_crypto::bls12381;
 use diem_crypto::bls12381::ProofOfPossession;
+use diem_crypto::ed25519::PrivateKey;
+use diem_forge::{LocalNode, LocalVersion, Node, NodeExt, Version};
 use diem_genesis::config::HostAndPort;
 use diem_genesis::keys::{PrivateIdentity, PublicIdentity};
 use diem_types::on_chain_config::new_epoch_event_key;
@@ -34,14 +31,20 @@ use hex;
 use hex::FromHex;
 use libra_config::validator_config;
 use libra_query::query_view;
+use libra_smoke_tests::libra_smoke::LibraSmoke;
+use libra_txs::txs_cli_vals::ValidatorTxs;
 use libra_types::exports::{Client, NamedChain};
 use libra_wallet::core::legacy_scheme::LegacyKeyScheme;
 use libra_wallet::validator_files::SetValidatorConfiguration;
 use move_core_types::value::MoveValue;
 use serde::Deserialize;
+use std::fs;
+use std::mem::ManuallyDrop;
+use std::path::Path;
 
 use crate::session_tools::{
-    libra_execute_session_function, libra_run_session, writeset_voodoo_events,
+    self, libra_execute_session_function, libra_run_session, session_add_validator,
+    writeset_voodoo_events,
 };
 
 #[derive(Parser)]
@@ -58,14 +61,6 @@ pub struct TwinOpts {
     /// provide info about the DB state, e.g. version
     #[clap(value_parser)]
     pub info: bool,
-}
-
-pub struct Credentials {
-    pub account: AccountAddress,
-    pub consensus_pubkey: Vec<u8>,
-    pub proof_of_possession: Vec<u8>,
-    pub network_addresses: Vec<u8>,
-    pub fullnode_addresses: Vec<u8>,
 }
 
 impl TwinOpts {
@@ -91,6 +86,55 @@ impl TwinOpts {
         Ok(ManuallyDrop::new(s))
     }
 
+    pub async fn make_rescue_twin_blob(
+        db_path: &Path,
+        cred: &ValCredentials,
+    ) -> anyhow::Result<PathBuf> {
+        let vmc = libra_run_session(
+            db_path,
+            |session| session_add_validator(session, cred),
+            Some(vec![cred.account.clone()]),
+        )?;
+        let cs = session_tools::unpack_changeset(vmc)?;
+
+        let gen_tx = Transaction::GenesisTransaction(WriteSetPayload::Direct(cs));
+        let out = db_path.join("rescue.blob");
+
+        let bytes = bcs::to_bytes(&gen_tx)?;
+        std::fs::write(&out, bytes.as_slice())?;
+        Ok(out)
+    }
+
+    pub async fn bootstrap_twin_db(swarm_db_path: &Path, genesis_blob_path: &Path) -> anyhow::Result<()>{
+
+        let genesis_transaction = {
+            let buf = fs::read(&genesis_blob_path).unwrap();
+            bcs::from_bytes::<Transaction>(&buf).unwrap()
+        };
+
+        // replace with rescue cli
+        let bootstrap = BootstrapOpts {
+            db_dir: swarm_db_path.to_owned(),
+            genesis_txn_file: genesis_blob_path.to_owned(),
+            waypoint_to_verify: None,
+            commit: false, // NOT APPLYING THE TX
+            info: false,
+        };
+
+        let wp_opt = bootstrap.run()?;
+        // replace with rescue cli
+        let bootstrap = BootstrapOpts {
+            db_dir: swarm_db_path.to_owned(),
+            genesis_txn_file: genesis_blob_path.to_owned(),
+            waypoint_to_verify: wp_opt,
+            commit: true,
+            info: false,
+        };
+        bootstrap.run()?;
+
+        Ok(())
+
+    }
     /// end to end with rando
     /// Which is basically running a new random swarm on an existing db.
     pub async fn apply_with_rando_e2e(prod_db: PathBuf) -> anyhow::Result<()> {
@@ -113,8 +157,18 @@ impl TwinOpts {
 
         Self::clone_db(&prod_db, &swarm_db_path)?;
 
-        Self::add_val(&swarm_db_path, cred);
+        assert!(swarm_db_path.exists(), "no swarm path");
 
+        // craft the rescue twin blob
+        // we add the validator credentials
+        // and add validator to set
+        let genesis_blob_path = Self::make_rescue_twin_blob(&swarm_db_path, &cred).await?;
+        assert!(genesis_blob_path.exists(), "no rescue blob created");
+
+        // apply the rescue blob to the swarm db
+        Self::bootstrap_twin_db(&swarm_db_path, &genesis_blob_path);
+
+        // Ok now try to restart the swarm
         smoke.swarm.validators_mut().for_each(|n| {
             dbg!(&n.log_path());
             n.start();
@@ -124,9 +178,9 @@ impl TwinOpts {
 
         smoke
             .swarm
-            .liveness_check(Instant::now().checked_add(Duration::from_secs(30)).unwrap());
+            .liveness_check(Instant::now().checked_add(Duration::from_secs(10)).unwrap());
 
-        std::thread::sleep(Duration::from_secs(30));
+        // std::thread::sleep(Duration::from_secs(30));
 
         // we need to clean up the temp directory and running node.
         // Comment out if you want to keep the directory for debugging.
@@ -137,26 +191,8 @@ impl TwinOpts {
         return Ok(());
     }
 
-    fn add_val(swarm_db_path: &Path, cred: Credentials) {
-        dbg!("run session");
-        match libra_run_session(
-            swarm_db_path,
-            |session| {
-                Self::session_add_validator(
-                    session,
-                    cred,
-                )
-            },
-            None,
-        ) {
-            Ok(_) => println!("Successfully got through this voodoo box"),
-            Err(e) => {
-                println!("err: {:?}", e);
-            }
-        }
-    }
-
-    async fn extract_credentials(marlon_node: &LocalNode) -> anyhow::Result<Credentials> {
+    /// from an initialized swarm state, extract one node's credentials
+    async fn extract_credentials(marlon_node: &LocalNode) -> anyhow::Result<ValCredentials> {
         // get the necessary values from the current db
         let account = marlon_node.config().get_peer_id().unwrap();
 
@@ -198,14 +234,8 @@ impl TwinOpts {
         let network_addresses = hex::decode(network_addresses).unwrap();
         let fullnode_addresses = hex::decode(fullnode_addresses).unwrap();
 
-        println!(
-            "consensus_public_key from CHAIN: {:?}",
-            consensus_public_key_chain
-        );
-        println!("consensus_public_key from FILE: {:?}", consensus_pubkey);
-
         assert_eq!(consensus_public_key_chain, consensus_pubkey);
-        Ok(Credentials {
+        Ok(ValCredentials {
             account,
             consensus_pubkey,
             proof_of_possession,
@@ -215,13 +245,14 @@ impl TwinOpts {
     }
 
     fn clone_db(prod_db: &Path, swarm_db: &Path) -> anyhow::Result<()> {
-        println!("removed the swarm db completely");
-        println!("brick_db: {:?}", prod_db);
+        println!("prod db path: {:?}", prod_db);
+        println!("swarm db path: {:?}", swarm_db);
+
         println!("copying the brick db to the swarm db");
         // // this swaps the directories
         assert!(prod_db.exists());
         assert!(swarm_db.exists());
-        let swarm_old_path = swarm_db.join("old");
+        let swarm_old_path = swarm_db.parent().unwrap().join("db-old");
         fs::create_dir(&swarm_old_path);
         println!("try rename 1");
         let options = dir::CopyOptions::new(); //Initialize default values for CopyOptions
@@ -231,14 +262,14 @@ impl TwinOpts {
         assert!(!swarm_db.exists());
         println!("try rename 2");
         fs::create_dir(&swarm_db);
-        dir::copy(&prod_db, &swarm_db, &options)?;
+        dir::copy(&prod_db, &swarm_db.parent().unwrap(), &options)?;
 
-        println!("done copying the brick db to the swarm db");
+        println!("done copying the prod db to the swarm db");
         Ok(())
     }
 
     /// Function for combined function calls
-    fn session_add_validator(session: &mut SessionExt, cred: Credentials) -> anyhow::Result<()> {
+    fn session_add_validator(session: &mut SessionExt, cred: ValCredentials) -> anyhow::Result<()> {
         // account address of the diem_framework
         let signer = MoveValue::Signer(AccountAddress::ONE);
         let vector_val = MoveValue::vector_address(vec![cred.account]);
