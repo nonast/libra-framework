@@ -336,10 +336,10 @@ module diem_framework::stake {
     /// to set later.
     public entry fun initialize_stake_owner(
         owner: &signer,
-        initial_stake_amount: u64,
+        _initial_stake_amount: u64,
         operator: address,
         _voter: address,
-    ) acquires AllowedValidators, OwnerCapability, ValidatorState {
+    ) acquires OwnerCapability, ValidatorState {
         initialize_owner(owner);
         move_to(owner, ValidatorConfig {
             consensus_pubkey: vector::empty(),
@@ -348,9 +348,9 @@ module diem_framework::stake {
             validator_index: 0,
         });
 
-        if (initial_stake_amount > 0) {
-            // add_stake(owner, initial_stake_amount);
-        };
+        // if (initial_stake_amount > 0) {
+        //     // add_stake(owner, initial_stake_amount);
+        // };
 
         let account_address = signer::address_of(owner);
         if (account_address != operator) {
@@ -365,7 +365,7 @@ module diem_framework::stake {
         proof_of_possession: vector<u8>,
         network_addresses: vector<u8>,
         fullnode_addresses: vector<u8>,
-    ) acquires AllowedValidators {
+    ) {
         // Checks the public key has a valid proof-of-possession to prevent rogue-key attacks.
         let pubkey_from_pop = &mut bls12381::public_key_from_bytes_with_pop(
             consensus_pubkey,
@@ -385,9 +385,9 @@ module diem_framework::stake {
         slow_wallet::set_slow(account);
     }
 
-    fun initialize_owner(owner: &signer) acquires AllowedValidators {
+    fun initialize_owner(owner: &signer) {
         let owner_address = signer::address_of(owner);
-        assert!(is_allowed(owner_address), error::not_found(EINELIGIBLE_VALIDATOR));
+        // assert!(is_allowed(owner_address), error::not_found(EINELIGIBLE_VALIDATOR));
         assert!(!stake_pool_exists(owner_address), error::already_exists(EALREADY_REGISTERED));
 
         move_to(owner, ValidatorState {
@@ -1147,7 +1147,7 @@ module diem_framework::stake {
         _amount: u64,
         should_join_validator_set: bool,
         should_end_epoch: bool,
-    ) acquires AllowedValidators, ValidatorState, ValidatorConfig, ValidatorSet,
+    ) acquires ValidatorState, ValidatorConfig, ValidatorSet,
    ValidatorPerformance {
         use ol_framework::ol_account;
         system_addresses::assert_ol(root);
@@ -1175,7 +1175,7 @@ module diem_framework::stake {
     #[test_only]
     /// One step setup for tests
     public fun quick_init(root: &signer, val_sig: &signer) acquires
-    ValidatorSet, ValidatorState, ValidatorConfig, AllowedValidators,
+    ValidatorSet, ValidatorState, ValidatorConfig,
     ValidatorPerformance {
       system_addresses::assert_ol(root);
       let (_sk, pk, pop) = generate_identity();
