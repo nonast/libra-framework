@@ -67,6 +67,7 @@ where
 
     let mut session = mvm.new_session(&adapter, s_id, false);
 
+    dbg!("start session");
     ////// FUNCTIONS RUN HERE
     f(&mut session)
         .map_err(|err| format_err!("Unexpected VM Error Running Rescue VM Session: {:?}", err))?;
@@ -75,6 +76,7 @@ where
     // if we want to replace the vals, or otherwise use swarm
     // to drive the db state
     if let Some(vals) = debug_vals {
+        dbg!("replace vals");
         let vm_signer = MoveValue::Signer(AccountAddress::ZERO);
         let vals_cast = MoveValue::vector_address(vals);
         let args = vec![&vm_signer, &vals_cast];
@@ -162,6 +164,7 @@ pub fn session_add_validator(
 ) -> anyhow::Result<()> {
     // account address of the diem_framework
     upgrade_framework(session)?;
+    // writeset_voodoo_events(session)?;
     //// NOTE: this section should be deprecated after
     //// configure_allowed_validators is removed in mainnet
     let signer = MoveValue::Signer(AccountAddress::ONE);
@@ -170,7 +173,7 @@ pub fn session_add_validator(
     let args = vec![&signer, &vector_val];
     dbg!("configure_allowed_validators");
     libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
-    //// end ////
+    // end ////
 
     let signer = MoveValue::Signer(cred.account);
     // let signer_address = MoveValue::Address(cred.account);

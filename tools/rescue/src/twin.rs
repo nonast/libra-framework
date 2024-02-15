@@ -94,7 +94,7 @@ impl TwinOpts {
         let vmc = libra_run_session(
             db_path,
             |session| session_add_validator(session, cred),
-            Some(vec![cred.account.clone()]),
+            None,
         )?;
         let cs = session_tools::unpack_changeset(vmc)?;
 
@@ -309,4 +309,16 @@ impl TwinOpts {
 
     //     Ok(())
     // }
+}
+
+
+#[tokio::test]
+async fn test_twin_with_rando() -> anyhow::Result<()> {
+    println!("Hi, I'm rando");
+
+    // // for if you want to use your own production db
+    let prod_db_to_clone = PathBuf::from("/root/db");
+
+    TwinOpts::apply_with_rando_e2e(prod_db_to_clone).await?;
+    Ok(())
 }

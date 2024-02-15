@@ -494,7 +494,7 @@ pub enum EntryFunctionCall {
     /// Note: this triggers setting the operator and owner, set it to the account's address
     /// to set later.
     StakeInitializeStakeOwner {
-        initial_stake_amount: u64,
+        _initial_stake_amount: u64,
         operator: AccountAddress,
         _voter: AccountAddress,
     },
@@ -841,10 +841,10 @@ impl EntryFunctionCall {
             } => slow_wallet_smoke_test_vm_unlock(user_addr, unlocked, transferred),
             SlowWalletUserSetSlow {} => slow_wallet_user_set_slow(),
             StakeInitializeStakeOwner {
-                initial_stake_amount,
+                _initial_stake_amount,
                 operator,
                 _voter,
-            } => stake_initialize_stake_owner(initial_stake_amount, operator, _voter),
+            } => stake_initialize_stake_owner(_initial_stake_amount, operator, _voter),
             StakeInitializeValidator {
                 consensus_pubkey,
                 proof_of_possession,
@@ -2227,7 +2227,7 @@ pub fn slow_wallet_user_set_slow() -> TransactionPayload {
 /// Note: this triggers setting the operator and owner, set it to the account's address
 /// to set later.
 pub fn stake_initialize_stake_owner(
-    initial_stake_amount: u64,
+    _initial_stake_amount: u64,
     operator: AccountAddress,
     _voter: AccountAddress,
 ) -> TransactionPayload {
@@ -2242,7 +2242,7 @@ pub fn stake_initialize_stake_owner(
         ident_str!("initialize_stake_owner").to_owned(),
         vec![],
         vec![
-            bcs::to_bytes(&initial_stake_amount).unwrap(),
+            bcs::to_bytes(&_initial_stake_amount).unwrap(),
             bcs::to_bytes(&operator).unwrap(),
             bcs::to_bytes(&_voter).unwrap(),
         ],
@@ -3206,7 +3206,7 @@ mod decoder {
     pub fn stake_initialize_stake_owner(payload: &TransactionPayload) -> Option<EntryFunctionCall> {
         if let TransactionPayload::EntryFunction(script) = payload {
             Some(EntryFunctionCall::StakeInitializeStakeOwner {
-                initial_stake_amount: bcs::from_bytes(script.args().get(0)?).ok()?,
+                _initial_stake_amount: bcs::from_bytes(script.args().get(0)?).ok()?,
                 operator: bcs::from_bytes(script.args().get(1)?).ok()?,
                 _voter: bcs::from_bytes(script.args().get(2)?).ok()?,
             })
