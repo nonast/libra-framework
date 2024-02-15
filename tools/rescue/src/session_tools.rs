@@ -161,12 +161,16 @@ pub fn session_add_validator(
     cred: &ValCredentials,
 ) -> anyhow::Result<()> {
     // account address of the diem_framework
-    // let signer = MoveValue::Signer(AccountAddress::ONE);
-    // let vector_val = MoveValue::vector_address(vec![cred.account]);
+    upgrade_framework(session)?;
+    //// NOTE: this section should be deprecated after
+    //// configure_allowed_validators is removed in mainnet
+    let signer = MoveValue::Signer(AccountAddress::ONE);
+    let vector_val = MoveValue::vector_address(vec![cred.account]);
 
-    // let args = vec![&signer, &vector_val];
-
-    // libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
+    let args = vec![&signer, &vector_val];
+    dbg!("configure_allowed_validators");
+    libra_execute_session_function(session, "0x1::stake::configure_allowed_validators", args)?;
+    //// end ////
 
     let signer = MoveValue::Signer(cred.account);
     // let signer_address = MoveValue::Address(cred.account);
@@ -183,6 +187,7 @@ pub fn session_add_validator(
         &fullnode_addresses,
     ];
 
+    dbg!("register_validator");
     libra_execute_session_function(session, "0x1::validator_universe::register_validator", args)?;
 
     // // to end this, we (might) need to do voodoo
