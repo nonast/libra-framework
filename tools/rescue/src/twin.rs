@@ -39,8 +39,23 @@ use libra_wallet::validator_files::SetValidatorConfiguration;
 use move_core_types::value::MoveValue;
 use serde::Deserialize;
 use std::fs;
+use std::io::Write;
 use std::mem::ManuallyDrop;
 use std::path::Path;
+use dirs;
+use diem_db_tool;
+use diem_backup_cli::{
+    coordinators::restore::{RestoreCoordinator, RestoreCoordinatorOpt},
+    utils::GlobalRestoreOpt,
+    storage::{DBToolStorageOpt, command_adapter::CommandAdapter},
+};
+use std::{sync::Arc};
+use std::cell::RefCell;
+use diem_backup_cli::metadata::cache::MetadataCacheOpt;
+use diem_backup_cli::storage::command_adapter::CommandAdapterOpt;
+use std::str::FromStr;
+use git2::{Repository, Error, RemoteCallbacks, build::RepoBuilder};
+use std::process::Command;
 
 use crate::session_tools::{
     self, libra_execute_session_function, libra_run_session, session_add_validator,
@@ -309,7 +324,214 @@ impl TwinOpts {
 
     //     Ok(())
     // }
+
+
+    /// Function to bootstrap a twin db from a snapshot
+    /// bootstrap a prod database from a a github stored snapshot. Requires importing some libs
+    /// from diem, but should just be reimplementing the Makefile sirouk provides.
+    /// This currently only fetches the latest snapshot available on github.
+    /// todo: create proper tool for restore
+    /// The good ol' ol restore
+    /// "
+    /// When I couldn't fly
+    /// Oh, you gave me wings
+    /// You pick me up when I fall down
+    /// You ring the bell before they count me out
+    /// If I was drowning you would part the sea
+    /// And risk your own life to rescue me
+    /// "
+    async fn restore_from_snapshot(
+        swarm_db_path: &Path
+    ) -> anyhow::Result<()> {
+        const GITHUB_ORG: &str = "0LNetworkCommunity";
+        const GITHUB_REPO: &str = "epoch-archive-mainnet";
+        const GENESIS_DIRNAME: &str = "upgrades/v6.9.0";
+
+        //   cd ~/epoch-archive-mainnet
+        //   make restore-all
+
+        /// 1. sync-repo
+        // # if block added to allow developing on feature branch without the reset to main on every run
+        // cd ${REPO_PATH} && git pull origin main && \
+        // if [ `git rev-parse --abbrev-ref HEAD` = "main" ]; then \
+        // git reset --hard origin/main && git clean -xdf; \
+        // fi
+
+        // We do not need to do this as we're cloning the repo
+
+
+        /// 2. wipe-db
+        // sudo rm -rf ${DB_PATH}
+        // let home_path = dirs::home_dir().ok_or_else(|| anyhow::anyhow!("no home dir"))?;
+        let db_path = swarm_db_path;
+        println!("Removing the db");
+        fs::remove_dir_all(&db_path)?;
+
+        /// 3. make restore-init
+        // ${SOURCE_PATH}/target/release/libra config fullnode-init
+
+        // we might not need to do this
+
+
+        /// 4. make restore-genesis
+        // mkdir -p ${GENESIS_PATH} &&
+        // && cp -f ${REPO_PATH}/${GENESIS_DIRNAME}/waypoint.txt ${GENESIS_PATH}/waypoint.txt
+        let parent_path = db_path.parent().ok_or_else(|| anyhow::anyhow!("no parent dir"))?;
+        let genesis_path = parent_path.join("genesis");
+
+        println!("Creating the genesis path");
+        fs::create_dir(&genesis_path)?;
+
+        // get the genesis waypoint from the repo and place it in our local genesis_path
+        println!("Downloading the waypoint");
+        let waypoint_path = genesis_path.join("waypoint.txt");
+        TwinOpts::download_file_from_github(GITHUB_ORG, GITHUB_REPO, &format!("{}/waypoint.txt", GENESIS_DIRNAME), &waypoint_path).await?;
+
+        // do the same for the genesis.blob
+        println!("Downloading the genesis.blob");
+        let genesis_blob_path = genesis_path.join("genesis.blob");
+        TwinOpts::download_file_from_github(GITHUB_ORG, GITHUB_REPO, &format!("{}/genesis.blob", GENESIS_DIRNAME), &genesis_blob_path).await?;
+
+        /// 5. cd ${ARCHIVE_PATH} && ${BIN_PATH}/${BIN_FILE} restore bootstrap-db --target-db-dir ${DB_PATH} --metadata-cache-dir ${REPO_PATH}/metacache --command-adapter-config ${REPO_PATH}/epoch-archive.yaml
+        // ARCHIVE_PATH=${REPO_PATH}/snapshots
+        // we have to get some tools from `diem-db-tool` to do this
+
+        // the arguments required
+        let target_db_dir = db_path;
+
+        // We use this as metacache dir for now
+        println!("Creating the metacache dir");
+        let metadata_cache_dir = parent_path.join("/tmp/epoch-archive-mainnet/metacache");
+        // fs::create_dir(&metadata_cache_dir)?;
+
+        // we can try using this..
+        // let command_adapter_config = parent_path.join("epoch-archive.yaml");
+        // TwinOpts::download_file_from_github(GITHUB_ORG, GITHUB_REPO, "epoch-archive.yaml", &command_adapter_config).await?;
+
+        println!("Fetching the command adapter config");
+        let command_adapter_config = PathBuf::from("/tmp/epoch-archive-mainnet/epoch-archive.yaml");
+
+        // now do the `restore bootstrap-db` command
+        // todo: cleanup this mess by not using all this cli opts stuff
+
+        println!("Restore coordinator opt");
+        let opt = RestoreCoordinatorOpt {
+            metadata_cache_opt: MetadataCacheOpt::new(Some(metadata_cache_dir)),
+            replay_all: false,
+            ledger_history_start_version: None,
+            skip_epoch_endings: false,
+        };
+
+        // GlobalRestoreOpt
+        println!("Global restore opt");
+        let global = GlobalRestoreOpt {
+            dry_run: false,
+            db_dir: Some(target_db_dir.to_path_buf()),
+            target_version: None,
+            trusted_waypoints: Default::default(),
+            rocksdb_opt: Default::default(),
+            concurrent_downloads: Default::default(),
+            replay_concurrency_level: Default::default(),
+        };
+
+        // DBToolStorageOpt
+        println!("DBToolStorageOpt");
+        let command_adapt_opt = CommandAdapterOpt::from_str(command_adapter_config.to_str().unwrap()).unwrap();
+        let storage = Arc::new(CommandAdapter::new_with_opt(command_adapt_opt).await?);
+
+        RestoreCoordinator::new(
+            opt, //restorecoordopt
+            global.try_into()?, //globalopt
+            storage, //storageopt
+        ).run().await?;
+
+
+        Ok(())
+    }
+
+    // /// Function to download the snapshot repo from github [FAST?]
+    // async fn clone_snapshot_repo(org: &str, repo: &str, target: &Path) -> anyhow::Result<()> {
+    //     let url = format!(
+    //         "https://github.com/{}/{}.git",
+    //         org, repo
+    //     );
+    //
+    //     // Directory where the repository will be cloned
+    //
+    //     let dest_path = target; // Ensure canonical path
+    //
+    //     // Clone the repository using Git CLI
+    //     let status = Command::new("git")
+    //         .arg("clone")
+    //         .arg("--progress")  // Show progress during cloning
+    //         .arg(&url)
+    //         .arg(&dest_path)
+    //         .status()?;
+    //
+    //     if status.success() {
+    //         println!("Repository cloned successfully to: {:?}", dest_path);
+    //         Ok(())
+    //     } else {
+    //         Err(anyhow::anyhow!("Failed to clone repository"))
+    //     }
+    // }
+
+    /// Function to download the snapshot repo from github [SLOW!]
+    async fn clone_snapshot_repo(org: &str, repo: &str, target: &Path) -> anyhow::Result<()> {
+        let url = format!(
+            "https://github.com/{}/{}.git",
+            org, repo
+        );
+
+        // Directory where the repository will be cloned
+        let dest_path = Path::new(target);
+
+        // Set up custom callbacks for progress reporting
+        let mut callbacks = RemoteCallbacks::new();
+        let last_progress = RefCell::new(0);
+
+        callbacks.transfer_progress(move |progress| {
+            let current_progress = progress.received_objects() * 100 / progress.total_objects();
+            let last_progress_copy = *last_progress.borrow();
+            // Print progress only when it makes significant progress (e.g., every 10%)
+            if current_progress != last_progress_copy {
+                println!("Cloning: {}% done", current_progress);
+                *last_progress.borrow_mut() = current_progress;
+            }
+            true // Continue cloning
+        });
+
+        // Prepare fetch options.
+          let mut fo = git2::FetchOptions::new();
+          fo.remote_callbacks(callbacks);
+
+          // Prepare builder.
+          let mut builder = git2::build::RepoBuilder::new();
+          builder.fetch_options(fo);
+
+        builder.clone(&url, dest_path)?;
+
+        Ok(())
+    }
+
+    /// Function to download a single file from github
+    async fn download_file_from_github(
+        org: &str,
+        repo: &str,
+        path: &str,
+        target: &Path,
+    ) -> anyhow::Result<()> {
+        let url = format!(
+            "https://raw.githubusercontent.com/{}/{}/main/{}",
+            org, repo, path
+        );
+        let response = reqwest::get(&url).await?;
+        let mut file = fs::File::create(&target)?;
+        file.write_all(&response.bytes().await?)?;
+        Ok(())
+    }
 }
+
 
 
 #[tokio::test]
@@ -320,5 +542,38 @@ async fn test_twin_with_rando() -> anyhow::Result<()> {
     let prod_db_to_clone = PathBuf::from("/root/db");
 
     TwinOpts::apply_with_rando_e2e(prod_db_to_clone).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_restore_snapshot() -> anyhow::Result<()> {
+    // let swarm_db_path = PathBuf::from("/root/db");
+    // let mut smoke = TwinOpts::initialize_marlon_the_val_and_prevent_drop().await?;
+    // let db_path = smoke.swarm.validators_mut().next().unwrap().config().storage.dir();
+
+    let db_path = PathBuf::from("/private/var/folders/c7/zqx97b6d1bqcqbrw49chz9ph0000gn/T/.tmpmBvwnw/0/db");
+
+    // we need to do this to reset the state for testing
+    fs::create_dir(&db_path)?;
+    let parent_path = db_path.parent().ok_or_else(|| anyhow::anyhow!("no parent dir"))?;
+    let genesis_path = parent_path.join("genesis");
+    fs::remove_dir_all(&genesis_path)?;
+
+    println!("db path: {:?}", db_path);
+
+    TwinOpts::restore_from_snapshot(&db_path).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_repo_clone() -> anyhow::Result<()> {
+    let org = "0LNetworkCommunity";
+    let repo = "epoch-archive-mainnet";
+    let target = PathBuf::from("/tmp/epoch-archive-mainnet");
+
+    // clean previous clone
+    fs::remove_dir_all(&target)?;
+
+    TwinOpts::clone_snapshot_repo(org, repo, &target).await?;
     Ok(())
 }

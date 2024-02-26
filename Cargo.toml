@@ -74,6 +74,8 @@ diem-language-e2e-tests = { git = "https://github.com/0LNetworkCommunity/diem.gi
 diem-state-view = { git = "https://github.com/0LNetworkCommunity/diem.git", rev = "db1137ba1" }
 diem-storage-interface = { git = "https://github.com/0LNetworkCommunity/diem.git", rev = "db1137ba1" }
 diem-temppath = { git = "https://github.com/0LNetworkCommunity/diem.git", rev = "db1137ba1" }
+diem-db-tool = { git = "https://github.com/0LNetworkCommunity/diem.git", rev = "db1137ba1" }
+diem-backup-cli = { git = "https://github.com/0LNetworkCommunity/diem.git", rev = "db1137ba1" }
 
 ### External crate dependencies.
 # 0L NOTE: most of these are not used. But we leave the entire block here

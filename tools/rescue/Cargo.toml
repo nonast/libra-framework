@@ -46,6 +46,10 @@ serde_yaml = { workspace = true }
 libra-query = { workspace = true }
 reqwest = { workspace = true }
 hex = { workspace = true }
+dirs = { workspace = true }
+diem-db-tool = { workspace = true }
+diem-backup-cli = { workspace = true }
+git2 = { workspace = true }
 
 
 [dev-dependencies]
